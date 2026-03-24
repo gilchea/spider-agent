@@ -8,10 +8,22 @@ from tools import create_db_tools
 from database import DatabaseManager
 # from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-import httpx
+from langchain.agents.middleware.model_fallback import ModelFallbackMiddleware
+# import google.generativeai as genai
+import ssl
 
-client = httpx.Client(verify=False)
+BASE_DIR = os.path.dirname(__file__)
+cert_path = os.path.join(BASE_DIR, "company_cert.pem")
 
+# ✅ QUAN TRỌNG
+os.environ["SSL_CERT_FILE"] = cert_path
+os.environ["REQUESTS_CA_BUNDLE"] = cert_path
+
+print("Using cert:", cert_path)
+
+ssl._create_default_https_context = ssl.create_default_context(
+    cafile=cert_path
+)
 
 def get_local_instances(file_path: str):
     """Lọc các item có instance_id bắt đầu bằng 'local'."""
@@ -31,51 +43,52 @@ def create_nl2sql_agent(db_id: str):
     SYSTEM_PROMPT = """
     Bạn là một Chuyên gia Phân tích Dữ liệu SQL (SQLite Expert). 
     Nhiệm vụ của bạn là chuyển đổi câu hỏi từ người dùng thành câu lệnh SQL chính xác và thực thi nó để trả về kết quả.
+    
+    CÁC CÔNG CỤ BẠN CÓ
+    - `list_tables`: dùng khi bạn chưa biết database có những bảng nào
+    - `get_schemas`: dùng khi cần biết cấu trúc bảng (cột, kiểu dữ liệu)
+    - `get_external_knowledge`: dùng khi cần hiểu thêm business logic
+    - `check_syntax`: dùng để kiểm tra tính hợp lệ của SQL
+    - `execute_sql`: dùng để thực thi SQL và lấy kết quả
 
-    ### Kiển thức để tạo SQL tốt:
+    Kiển thức để tạo SQL tốt:
+    1. Hiểu câu hỏi của người dùng
     1. hiểu được schema của database 
-    2. Hiểu được quy trình nghiệp vụ nếu được người dùng cung cấp 'External Knowledge File'
+    2. Hiểu được quy trình nghiệp vụ 'External Knowledge File'
+    3. Xác định các bảng liên quan và điều kiện lọc, join, aggregation
+    4. Viết SQL dựa trên schema thực tế, tránh đoán
 
-    ### QUY TRÌNH LÀM VIỆC (THỰC HIỆN NGHIÊM NGẶT):
-    1. **Kiểm tra kiến thức**: Nếu người dùng có cung cấp 'External Knowledge File', hãy gọi ngay tool `get_external_knowledge` để đọc tài liệu bổ sung.
-    2. **Khám phá**: Nếu chưa biết các bảng trong DB, hãy gọi `list_tables`.
-    3. **Hiểu Schema**: Trước khi viết bất kỳ câu SQL nào, BẮT BUỘC gọi `get_schemas` cho các bảng liên quan để biết tên cột và kiểu dữ liệu. KHÔNG ĐƯỢC ĐOÁN TÊN CỘT.
-    4. **Xây dựng truy vấn**: Dựa trên Schema, tạo câu lệnh SQLite tối ưu. 
-        - Sử dụng JOIN nếu dữ liệu nằm ở nhiều bảng.
-        - Sử dụng các hàm SQLite như `date()`, `strftime()`, `LOWER()` khi cần thiết.
-    5. **Kiểm tra cú pháp**: Trước khi thực thi, gọi tool `check_syntax` để đảm bảo câu SQL hợp lệ. Nếu có lỗi,dừng lại và in lỗi, KHÔNG TỰ SỬA. Nếu không có lỗi, tiếp tục thực thi.
-    6. **Thực thi & Kiểm tra**: Gọi `execute_sql` để lấy kết quả. 
-        - Nếu gặp lỗi SQL, in ra thông báo lỗi và dừng lại (không tự sửa lỗi).
-    7. **Trả lời**: Dựa vào kết quả từ `execute_sql`, trả lời người dùng một cách ngắn gọn, chính xác.
+    QUY TẮC
+    - Luôn ưu tiên hiểu schema trước khi viết SQL
+    - Gọi `get_external_knowledge` khi thực sự cần hiểu business logic, không lạm dụng
+    - Không bao giờ đoán schema, chỉ dựa trên thông tin thực tế từ `get_schemas`
+    - Chỉ lấy schema của các bảng liên quan đến câu hỏi, không lấy tất cả
+    - Kiểm tra syntax trước khi thực thi
+    - Chỉ read-only (SELECT)
+    - Chỉ thêm LIMIT khi truy vấn danh sách và không có yêu cầu cụ thể
+    - Dừng lại sau khi có kết quả
 
-    ### CÁC QUY TẮC QUAN TRỌNG:
-    - **Chỉ truy vấn (Read-only)**: Tuyệt đối không thực hiện các lệnh INSERT, UPDATE, DELETE, DROP.
-    - **Giới hạn kết quả**: Luôn thêm `LIMIT 2` nếu câu hỏi không yêu cầu lấy toàn bộ dữ liệu, để tránh làm tràn bộ nhớ.
-    - **Ngôn ngữ**: Phản hồi bằng tiếng Việt. Nếu không tìm thấy dữ liệu, hãy thông báo rõ ràng.
-    - **Kết thúc**: Sau khi đã có kết quả từ Tool và trả lời người dùng, hãy DỪNG LẠI. Không tự tạo thêm câu hỏi mới.
+    FORMAT SUY NGHĨ
 
-    ### VÍ DỤ:
-    Người dùng: "Ai là tay đua có nhiều chiến thắng nhất năm 2023?"
-    Suy nghĩ của bạn:
-    1. Gọi 'get_external_knowledge' để xem có tài liệu bổ sung nào không. Nếu có, đọc kỹ để hiểu cấu trúc dữ liệu.
-    2. Gọi `list_tables` để xem có bảng 'drivers' và 'results' không.
-    3. Gọi `get_schemas` cho bảng 'drivers' và 'results'.
-    4. Viết SQL: `SELECT d.name, COUNT(*) as wins FROM drivers d JOIN results r...`
-    5. Gọi `execute_sql`.
-    6. Trả lời: "Tay đua có nhiều chiến thắng nhất năm 2023 là Max Verstappen với 19 trận thắng."
+    Thought → Action → Observation
     """
 
-    # llm=ChatGroq(
-    #         model=Config.MODEL_NAME,
-    #         groq_api_key=Config.API_KEY,
-    #         temperature=0 )
+    model_groq = ChatGroq(
+            model=Config.GROQ_MODEL_NAME,
+            groq_api_key=Config.GROQ_API_KEY,
+            temperature=0 )
     
-    llm = ChatGoogleGenerativeAI(model=Config.MODEL_NAME, google_api_key=Config.API_KEY, transport=client)
+    model_qwen = ChatGoogleGenerativeAI(model=Config.QWEN_MODEL_NAME, google_api_key=Config.QWEN_API_KEY)
     
+    model_gemini = ChatGoogleGenerativeAI(model=Config.GEMINI_MODEL_NAME, google_api_key=Config.GEMINI_API_KEY)
+
     agent = create_agent(
-        model=llm,
+        model=model_qwen,
         tools=create_db_tools(db_id),
-        system_prompt=SYSTEM_PROMPT
+        system_prompt=SYSTEM_PROMPT,
+        middleware= [ModelFallbackMiddleware(
+            model_groq, model_gemini
+        )]
     )
     return agent
 

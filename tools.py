@@ -1,3 +1,5 @@
+import json
+
 from pydantic import BaseModel, Field
 from typing import List
 from database import DatabaseManager
@@ -99,39 +101,58 @@ def create_db_tools(db_id: str):
             return f"Lỗi thực thi SQL: {str(e)}"
         
     @tool
-    def get_external_knowledge(doc_name: str) -> str:
-        """Retrieve additional contextual knowledge from an external document.
+    def get_external_knowledge(db_id: str) -> str:
+        """Retrieve external knowledge documents associated with a database. 
+        This tool should be used before SQL generation when additional domain-specific knowledge may improve query understanding. 
+        The tool automatically maps the given database ID to its corresponding external knowledge files (if any) using a precomputed mapping file. 
+        Args: 
+        db_id: Database identifier (e.g., "Airlines", "E_commerce") 
+        Returns: Combined content of all relevant external knowledge documents. 
+        - If no knowledge exists: returns a message indicating none is available 
+        - If files are missing: returns warning messages 
+        - If successful: returns concatenated document contents """
+        mapping_path = "db_knowledge.json"
 
-        This tool should be used when the user query references an
-        "External Knowledge File" to provide extra context before choose table to get schema and generating SQL.
-
-        Args:
-            doc_name: Name of the document file to retrieve.
-                    Example: "schema_description.txt"
-
-        Returns:
-            The full text content of the document if found.
-
-            If the file does not exist or is empty, returns an appropriate message.
-        """
-        # Trường hợp không có tên file (null/None/rỗng)
-        if not doc_name: 
-            return "Không có kiến thức bổ sung (External Knowledge) cho câu hỏi này."
-
-        path = os.path.join(Config.DOC_ROOT, doc_name)
-        
-        # Trường hợp có tên file nhưng file không tồn tại trên ổ đĩa
-        if not os.path.exists(path):
-            return f"Cảnh báo: Tài liệu '{doc_name}' được nhắc đến nhưng không tìm thấy tại {path}."
-
-        # Trường hợp đọc file thành công
+        # Load mapping
         try:
-            with open(path, 'r', encoding='utf-8') as f:
-                content = f.read().strip()
-                return content if content else "Tài liệu tồn tại nhưng nội dung trống."
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                mapping = json.load(f)
         except Exception as e:
-            return f"Lỗi khi đọc tài liệu: {str(e)}"
-        
+            return f"Lỗi khi đọc file mapping db_knowledge.json: {str(e)}"
+
+        # 🔥 Convert list -> dict
+        db_map = {
+            item["db"]: item["external_knowledge"]
+            for item in mapping
+        }
+
+        # DB không có knowledge
+        if db_id not in db_map:
+            return f"Không có kiến thức bổ sung (External Knowledge) cho database '{db_id}'."
+
+        doc_names = db_map[db_id]
+
+        contents = []
+
+        for doc_name in doc_names:
+            path = os.path.join(Config.DOC_ROOT, doc_name)
+
+            if not os.path.exists(path):
+                contents.append(f"[Cảnh báo] Không tìm thấy tài liệu: {doc_name}")
+                continue
+
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        contents.append(f"\n===== {doc_name} =====\n{content}")
+                    else:
+                        contents.append(f"[Cảnh báo] Tài liệu '{doc_name}' rỗng.")
+            except Exception as e:
+                contents.append(f"[Lỗi] Không đọc được '{doc_name}': {str(e)}")
+
+        return "\n".join(contents) if contents else "Không có nội dung external knowledge hợp lệ."
+    
     @tool
     def check_syntax(sql_query: str) -> str:
         """Validate the syntax of a SQL SELECT query without executing it.

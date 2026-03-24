@@ -1,0 +1,50 @@
+[
+  {
+    "db": "E_commerce",
+    "external_knowledge": [
+      "RFM.md"
+    ]
+  },
+  {
+    "db": "Airlines",
+    "external_knowledge": [
+      "haversine_formula.md"
+    ]
+  },
+  {
+    "db": "Brazilian_E_Commerce",
+    "external_knowledge": [
+      "spherical_law.md"
+    ]
+  },
+  {
+    "db": "complex_oracle",
+    "external_knowledge": [
+      "projection_calculation.md"
+    ]
+  },
+  {
+    "db": "music",
+    "external_knowledge": [
+      "music_length_type.md"
+    ]
+  },
+  {
+    "db": "IPL",
+    "external_knowledge": [
+      "baseball_game_special_words_definition.md"
+    ]
+  },
+  {
+    "db": "oracle_sql",
+    "external_knowledge": [
+      "calculation_method.md"
+    ]
+  },
+  {
+    "db": "f1",
+    "external_knowledge": [
+      "f1_overtake.md"
+    ]
+  }
+]
