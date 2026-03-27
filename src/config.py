@@ -15,6 +15,9 @@ class Config:
     QWEN_API_KEY = os.getenv("QWEN_API_KEY")
     QWEN_MODEL_NAME = os.getenv("QWEN_MODEL_NAME")
 
+    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+    DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME")
+
     # DOC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "documents")
     # DB_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "spider2-localdb")
     # DB_KNOWLEDGE_MAPPING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "db_knowledge.json")
