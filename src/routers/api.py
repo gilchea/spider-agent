@@ -1,72 +1,3 @@
-# from fastapi import FastAPI, HTTPException
-# from pydantic import BaseModel
-# from src.helpers.agent import create_nl2sql_agent
-# from src.handlers.database import DatabaseManager
-
-# app = FastAPI(title="NL2SQL API", version="1.0")
-
-# # Request schemas
-# class LoadDBRequest(BaseModel):
-#     db_id: str
-
-# class QueryRequest(BaseModel):
-#     db_id: str
-#     question: str
-
-# # In-memory store (simple) Lưu agent theo db_id
-# agents = {}
-
-# # API: Load DB
-# @app.post("/load_db")  # Endpoint để load database và tạo agent tương ứng
-# def load_database(req: LoadDBRequest):
-#     try:
-#         db = DatabaseManager(req.db_id) # Tạo instance DatabaseManager để kiểm tra và lấy thông tin database
-#         tables = db.get_table_names()
-
-#         agent = create_nl2sql_agent(req.db_id)
-#         agents[req.db_id] = agent # Lưu agent vào dictionary để sử dụng cho các truy vấn sau này
-
-#         return {
-#             "success": True,
-#             "db_id": req.db_id,
-#             "tables": tables
-#         }
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e)) # Trả về lỗi nếu có vấn đề khi load database hoặc tạo agent
-
-
-# # API: Query
-# @app.post("/query") # Endpoint để nhận câu hỏi và trả về kết quả từ agent
-# def run_query(req: QueryRequest):
-#     try:
-#         if req.db_id not in agents: # Kiểm tra nếu agent cho db_id chưa tồn tại, trả về lỗi
-#             raise HTTPException(
-#                 status_code=400,
-#                 detail="Database chưa được load"
-#             )
-
-#         agent = agents[req.db_id]
-
-#         input_content = f"Database: {req.db_id}\n"
-#         input_content += f"Question: {req.question}"
-
-#         response = agent.invoke({
-#             "messages": [
-#                 {"role": "user", "content": input_content}
-#             ]
-#         })
-
-#         output = response["messages"][-1].content
-
-#         return {
-#             "success": True,
-#             "output": output,
-#             "raw": response
-#         }
-
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e))
 """
 API Router module for NL2SQL system.
 
@@ -79,8 +10,12 @@ for efficient reuse across requests.
 """
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel # For request validation
 from typing import Dict, Any
+from openai import RateLimitError
+import httpx
+import json
+import time
 
 from src.helpers.agent import create_nl2sql_agent
 from src.handlers.database import DatabaseManager
@@ -91,8 +26,16 @@ from src.helpers.logging_config import logger
 # APP INITIALIZATION
 # -------------------------------------------------------------------
 
-app = FastAPI(title="NL2SQL API", version="1.0")
+app = FastAPI(title="NL2SQL", version="1.0")
 
+#-------------------------------------------------------------------
+# UTILS
+#-------------------------------------------------------------------
+
+def extract_text(answer):
+    if isinstance(answer, list):
+        return answer[0].get("text", "")
+    return answer
 
 # -------------------------------------------------------------------
 # REQUEST SCHEMAS
@@ -118,6 +61,7 @@ class QueryRequest(BaseModel):
     """
     db_id: str
     question: str
+    session_id: str 
 
 
 # -------------------------------------------------------------------
@@ -130,6 +74,11 @@ agents: Dict[str, Any] = {}
 # -------------------------------------------------------------------
 # API ENDPOINTS
 # -------------------------------------------------------------------
+# @app.post("/reset_memory")
+# def reset_memory(req: LoadDBRequest):
+#     if req.db_id in agents:
+#         agents[req.db_id] = create_nl2sql_agent(req.db_id)
+#     return {"success": True}
 
 @app.post("/load_db")
 def load_database(req: LoadDBRequest) -> Dict[str, Any]:
@@ -157,7 +106,7 @@ def load_database(req: LoadDBRequest) -> Dict[str, Any]:
         tables = db.get_table_names()
 
         agent = create_nl2sql_agent(req.db_id)
-        agents[req.db_id] = agent
+        agents[req.db_id] = agent # Cache the agent for future queries
 
         logger.info(
             "Database loaded successfully: %s | Tables: %s",
@@ -217,33 +166,92 @@ def run_query(req: QueryRequest) -> Dict[str, Any]:
 
         agent = agents[req.db_id]
 
-        input_content = f"Database: {req.db_id}\n"
-        input_content += f"Question: {req.question}"
+        # input_content = f"Database: {req.db_id}\n"
+        # input_content += f"Question: {req.question}"
 
-        response = agent.invoke({
-            "messages": [
-                {"role": "user", "content": input_content}
-            ]
-        })
+        # thread_id = f"session_{req.db_id}"  # đơn giản cho 1 user
+        thread_id = f"{req.session_id}_{req.db_id}"
+
+        start_time = time.perf_counter()
+
+        response = agent.invoke(
+            {
+                "messages": [
+                    {"role": "user", "content": req.question}
+                ]
+            },
+            {
+                "configurable": {
+                    "thread_id": thread_id
+                }
+            }
+        )
+
+        end_time = time.perf_counter()
+        execution_time = round(end_time - start_time, 2)  # giây 
+        # output = response["messages"][-1].content
+
+        # logger.info("Query executed successfully for db_id: %s", req.db_id)
+
+        # return {
+        #     "success": True,
+        #     "output": output,
+        #     "raw": response
+        # }
 
         output = response["messages"][-1].content
+        output_text = extract_text(output)
 
         logger.info("Query executed successfully for db_id: %s", req.db_id)
 
+        # Try to parse output as JSON to extract data and columns if available
+        data = None
+        columns = None
+
+        try:
+            parsed = json.loads(output_text)
+
+            if isinstance(parsed, dict) and "data" in parsed:
+                data = parsed.get("data")
+                columns = parsed.get("columns")
+
+        except Exception:
+            pass
+        
+        # clean_answer = extract_text(output)
         return {
             "success": True,
-            "output": output,
-            "raw": response
+            "answer": output_text,  # text trả lời
+            "data": data,         # bảng
+            "columns": columns,
+            "raw": response,
+            "execution_time": execution_time
         }
 
-    except HTTPException:
-        # Re-raise HTTP exceptions (do not override)
-        raise
+    except RateLimitError:
+        logger.warning("LLM quota exceeded")
+        raise HTTPException(
+            status_code=429,
+            detail="LLM quota exceeded"
+        )
+
+    except httpx.ConnectError:
+        logger.error("This model is currently experiencing high demand")
+        raise HTTPException(
+            status_code=503,
+            detail="This model is currently experiencing high demand"
+        )
+
+    except httpx.ReadTimeout:
+        logger.error("LLM timeout")
+        raise HTTPException(
+            status_code=504,
+            detail="LLM timeout"
+        )
 
     except Exception as e:
-        logger.error(
-            "Query execution failed for db_id: %s",
-            req.db_id,
-            exc_info=True
+        logger.error("Unexpected error", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Internal server error"
         )
-        raise HTTPException(status_code=500, detail=str(e)) from e
