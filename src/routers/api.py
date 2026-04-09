@@ -1,3 +1,4 @@
+###routers/api.py
 """
 API Router module for NL2SQL system.
 
@@ -19,7 +20,7 @@ import time
 
 from src.helpers.agent import create_nl2sql_agent
 from src.handlers.database import DatabaseManager
-from src.helpers.logging_config import logger
+from src.handlers.logging_config import logger
 
 
 # -------------------------------------------------------------------
@@ -170,7 +171,7 @@ def run_query(req: QueryRequest) -> Dict[str, Any]:
         # input_content += f"Question: {req.question}"
 
         # thread_id = f"session_{req.db_id}"  # đơn giản cho 1 user
-        thread_id = f"{req.session_id}_{req.db_id}"
+        thread_id = f"{req.session_id}_{req.db_id}" #
 
         start_time = time.perf_counter()
 
@@ -189,15 +190,6 @@ def run_query(req: QueryRequest) -> Dict[str, Any]:
 
         end_time = time.perf_counter()
         execution_time = round(end_time - start_time, 2)  # giây 
-        # output = response["messages"][-1].content
-
-        # logger.info("Query executed successfully for db_id: %s", req.db_id)
-
-        # return {
-        #     "success": True,
-        #     "output": output,
-        #     "raw": response
-        # }
 
         output = response["messages"][-1].content
         output_text = extract_text(output)

@@ -1,3 +1,4 @@
+###handlers/database.py
 """
 Database Manager module for SQLite-based NL2SQL system.
 
@@ -16,7 +17,7 @@ from typing import List, Dict, Any, Optional
 
 from sqlalchemy import create_engine, text, inspect
 from src.config import Config
-from src.helpers.logging_config import logger
+from src.handlers.logging_config import logger
 
 
 class DatabaseManager:

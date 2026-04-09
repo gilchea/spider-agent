@@ -1,3 +1,4 @@
+### config.py
 import os
 from dotenv import load_dotenv
 from pathlib import Path
@@ -18,12 +19,10 @@ class Config:
     DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
     DEEPSEEK_MODEL_NAME = os.getenv("DEEPSEEK_MODEL_NAME")
 
-    # DOC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "documents")
-    # DB_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "spider2-localdb")
-    # DB_KNOWLEDGE_MAPPING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resource", "databases", "db_knowledge.json")
-    # # CERT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "company_cert.pem")
-    # BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # CERT = os.path.join(BASE_DIR, "company_cert.pem")
+    GITHUB_KEY = os.getenv("GITHUB_TOKEN")
+    GITHUB_ENDPOINT = os.getenv("GITHUB_ENDPOINT")
+    GPT_MODEL_NAME = os.getenv("GPT_MODEL_NAME")
+
     BASE_DIR = Path(__file__).resolve().parent.parent
 
     CERT = BASE_DIR / "company_cert.pem"

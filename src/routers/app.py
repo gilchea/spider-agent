@@ -1,3 +1,4 @@
+###routers/app.py
 """
 Streamlit UI module for NL2SQL API system.
 
@@ -17,7 +18,7 @@ import pandas as pd
 from typing import Optional, Dict, Any
 import uuid
 
-from src.helpers.logging_config import logger
+from src.handlers.logging_config import logger
 
 
 API_URL = "http://127.0.0.1:8000"
@@ -219,9 +220,6 @@ def main() -> None:
 
             st.divider()
 
-            # if st.button("Clear History"):
-            #     st.session_state.history = []
-            #     st.success("Đã clear")
             if st.button("Clear History"):
                 st.session_state.history = []
                 st.session_state.session_id = str(uuid.uuid4())  # 👈 reset memory

@@ -1,3 +1,4 @@
+###helpers/tools.py
 """
 Tools module for NL2SQL Agent.
 
@@ -22,9 +23,10 @@ from typing import List
 from pydantic import BaseModel, Field
 from langchain.tools import tool
 
+from src.helpers.skills import SKILLS
 from src.handlers.database import DatabaseManager
 from src.config import Config
-from src.helpers.logging_config import logger
+from src.handlers.logging_config import logger
 
 
 # ================================
@@ -235,38 +237,33 @@ def create_db_tools(db_id: str):
         except Exception as e:
             logger.error("get_external_knowledge failed: %s", str(e), exc_info=True)
             return f"Lỗi khi đọc file mapping db_knowledge.json: {str(e)}"
-
-    @tool
-    def check_syntax(sql_query: str) -> str:
-        """
-        Validate SQL syntax without executing the query.
-
-        Args:
-            sql_query (str): SQL query to validate
-
-        Returns:
-            str: Validation result message
-
-        Raises:
-            Exception: Internally handled and logged
-        """
-        try:
-            logger.info("Tool check_syntax called")
-
-            clean_query = sql_query.strip().strip("`").replace("sql\n", "")
-
-            db_manager.check_sql_syntax(clean_query)
-
-            return "Cú pháp SQL hợp lệ."
-
-        except Exception as e:
-            logger.error("check_syntax failed: %s", str(e), exc_info=True)
-            return f"Lỗi cú pháp SQL: {str(e)}"
+        
 
     return [
-        list_tables,
+        # list_tables,
         get_schemas,
         execute_sql,
-        check_syntax,
+        # check_syntax,
         get_external_knowledge
     ]
+# from langchain.tools import tool
+
+@tool
+def load_skill(skill_name: str) -> str:
+    """Load the full content of a skill into the agent's context.
+
+    Use this when you need detailed information about how to handle a specific
+    type of request. This will provide you with comprehensive instructions,
+    policies, and guidelines for the skill area.
+
+    Args:
+        skill_name: The name of the skill to load (e.g., "expense_reporting", "travel_booking")
+    """
+    # Find and return the requested skill
+    for skill in SKILLS:
+        if skill["name"] == skill_name:
+            return f"Loaded skill: {skill_name}\n\n{skill['content']}"
+
+    # Skill not found
+    available = ", ".join(s["name"] for s in SKILLS)
+    return f"Skill '{skill_name}' not found. Available skills: {available}"
