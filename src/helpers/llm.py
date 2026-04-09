@@ -1,10 +1,28 @@
 import httpx
+import os
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
 
+from src.handlers.logging_config import logger
 from src.config import Config
+
+# -------------------------------------------------------------------
+# SSL CONFIGURATION
+# -------------------------------------------------------------------
+
+cert_path = str(Config.CERT)
+
+try:
+    os.environ["SSL_CERT_FILE"] = cert_path
+    os.environ["REQUESTS_CA_BUNDLE"] = cert_path
+
+    logger.info("SSL configured successfully with cert: %s", cert_path)
+
+except Exception as e:
+    logger.error("Failed to configure SSL: %s", str(e), exc_info=True)
+    raise RuntimeError(f"SSL configuration failed: {str(e)}") from e
 
 class LLMFactory:
     def __init__(self):

@@ -13,12 +13,14 @@ from src.helpers.tools import load_skill
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
+from typing import Literal
+
 
 llm_factory = LLMFactory()
 
 # define guardrail output structure
 class GuardrailOutput(BaseModel):
-    decision: str = Field(description="Decision to allow or block the query")
+    decision: Literal["ALLOW", "BLOCK"] = Field(description="Decision to allow or block the query BLOCK or ALLOW")
     reason: str = Field(description="Reason for the decision")
 
 class Middleware1(AgentMiddleware):
@@ -26,8 +28,8 @@ class Middleware1(AgentMiddleware):
 
     def __init__(self):
         super().__init__()
-        # self.guardrail_model = llm_factory.get_groq_model().with_structured_output(GuardrailOutput)
-        self.guardrail_model = llm_factory.get_groq_model().bind_tools([GuardrailOutput]) 
+        self.guardrail_model = llm_factory.get_groq_model().with_structured_output(GuardrailOutput)
+        # self.guardrail_model = llm_factory.get_groq_model().bind_tools([GuardrailOutput]) 
         # self.parser = PydanticToolsParser(tools=[GuardrailOutput])
 
         self.safety_prompt_template = GUARDRAIL_PROMPT
@@ -36,7 +38,7 @@ class Middleware1(AgentMiddleware):
         self.gemini_model = llm_factory.get_gemini_model()     
 
     @hook_config(can_jump_to=["end"])
-    def before_agent(self, state: AgentState, runtime: Runtime) -> dict[str, Any] | None:
+    def before_agent(self, state: AgentState, runtime: Runtime):
         """Kiểm tra tin nhắn của người dùng trước khi Agent bắt đầu suy nghĩ."""
         if not state["messages"]:
             return None
@@ -48,25 +50,22 @@ class Middleware1(AgentMiddleware):
         # Gọi LLM với cấu trúc Pydantic
         try:
             prompt = self.safety_prompt_template.format(user_input=last_message.content)
-            # Invoke trực tiếp vì đã gắn structured_output ở __init__
-        
-            # result = self.guardrail_model.invoke([{"role": "user", "content": prompt}])
-            msg = self.guardrail_model.invoke(prompt)
-            # result = self.parser.invoke([msg])[0] # Phải parse từ message trả về
-            result = msg.content
+            result = self.guardrail_model.invoke(prompt)
             
-            if result.decision == "BLOCKED":
+            if result.decision.upper() == "BLOCK":
                 return {
-                    # "messages": [AIMessage(content=f"🚫 Truy cập bị từ chối.\nLý do: {result.reason}")],
-                    "messages": [AIMessage(content= result)],
-                    "jump_to": "end"
-                }
+                        "messages": [{
+                            "role": "assistant",
+                            "content": f"🚫 **Truy cập bị chặn**\n**Lý do:** {result.reason}"
+                        }],
+                        "jump_to": "end"
+                    }
+
+            return None
         except Exception as e:
             # Fallback nếu LLM lỗi hoặc không parse được JSON
             print(f"Guardrail Error: {e}")
             return None 
-
-        return None
     
     # @wrap_model_call
     def wrap_model_call(self, request: ModelRequest, handler: Callable) -> ModelResponse:

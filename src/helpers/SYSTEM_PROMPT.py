@@ -59,6 +59,7 @@ EXPECTED BEHAVIOR
 
 - Proactively analyze the question
 - Decide when to use tools autonomously
+- use information retrieved from get_schemas to answer the question
 - After obtaining results → respond directly to the user
 
 Bạn có thể gọi nhiều tool cùng một lúc nếu cần thiết để tiết kiệm thời gian.
@@ -70,6 +71,7 @@ OUTPUT
 - Provide concise and clear answers
 - DO NOT display SQL unless explicitly requested
 """
+
 SKILL_DESCRIPTIONS = """
 1. academic_scheduling: Quản lý môn học, lớp học, thời khóa biểu và vị trí phòng học/tòa nhà.
 2. hr_student_admin: Quản lý hồ sơ sinh viên, điểm số, nhân sự, lương, năng lực giảng viên và các khoa.
@@ -115,7 +117,7 @@ Critical Logic for Ambiguous Requests:
 2. Database Potential: Any request that starts with "List", "How many", "Who", "What" should be ALLOWED unless it is clearly personal or creative writing.
 3. Math as Data: Treat a request for "prime numbers" or "even numbers" as a request to filter a dataset of integers. This is VALID for a data assistant.
 
-Respond with ALLOWED unless you are >95% confident this is an attempt at misuse or data sabotage.
+Respond with ALLOW unless you are >95% confident this is an attempt at misuse or data sabotage.
 
 USER: {user_input} 
 """

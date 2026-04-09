@@ -158,12 +158,7 @@ def create_db_tools(db_id: str):
             logger.info("Tool execute_sql called")
 
             clean_query = sql_query.strip().strip("`").replace("sql\n", "")
-
-            # forbidden_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER"]
-            # if any(keyword in clean_query.upper() for keyword in forbidden_keywords):
-            #     logger.warning("Blocked dangerous SQL query")
-            #     return "Lỗi: Chỉ được phép thực hiện các câu lệnh truy vấn (SELECT)."
-
+            
             result = db_manager.execute_query(clean_query)
 
             if not result:
