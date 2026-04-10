@@ -27,6 +27,7 @@ from src.helpers.skills import SKILLS
 from src.handlers.database import DatabaseManager
 from src.config import Config
 from src.handlers.logging_config import logger
+from langgraph.prebuilt import InjectedState
 
 
 # ================================
@@ -114,7 +115,7 @@ def create_db_tools(db_id: str):
             return f"Lỗi khi lấy danh sách bảng: {str(e)}"
 
     @tool(args_schema=TableNamesInput)
-    def get_schemas(table_names: List[str]) -> str:
+    def get_schemas(table_names: List[str], state: Annotated[dict, InjectedState]) -> str:
         """
         Retrieve CREATE TABLE schema definitions for specific tables.
 
@@ -127,6 +128,9 @@ def create_db_tools(db_id: str):
         Raises:
             Exception: Internally handled and logged
         """
+        if not state.get("skills_loaded"):
+            return "LỖI: Bạn chưa load bất kỳ Skill nào. Hãy dùng 'load_skill' để biết bạn được phép dùng bảng nào trước."
+
         try:
             logger.info("Tool get_schemas called with tables: %s", table_names)
 
@@ -141,7 +145,7 @@ def create_db_tools(db_id: str):
             return f"Lỗi khi lấy schema: {str(e)}"
 
     @tool(args_schema=SQLQueryInput)
-    def execute_sql(sql_query: str) -> str:
+    def execute_sql(sql_query: str, state: Annotated[dict, InjectedState]) -> str:
         """
         Execute a validated SQL SELECT query on the database.
 
@@ -154,11 +158,14 @@ def create_db_tools(db_id: str):
         Raises:
             Exception: Internally handled and logged
         """
+        if not state.get("skills_loaded"):
+            return "LỖI: Truy cập bị từ chối. Bạn phải load Skill tương ứng trước khi thực thi SQL."
+
         try:
             logger.info("Tool execute_sql called")
 
             clean_query = sql_query.strip().strip("`").replace("sql\n", "")
-            
+
             result = db_manager.execute_query(clean_query)
 
             if not result:
@@ -243,22 +250,35 @@ def create_db_tools(db_id: str):
     ]
 # from langchain.tools import tool
 
+from typing import Annotated, List, TypedDict
+from langgraph.graph.message import add_messages
+
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
+    # Lưu trữ danh sách các skill đã được load
+    skills_loaded: List[str]
+
+from langgraph.types import Command
+from langchain_core.messages import ToolMessage
+
 @tool
-def load_skill(skill_name: str) -> str:
-    """Load the full content of a skill into the agent's context.
-
-    Use this when you need detailed information about how to handle a specific
-    type of request. This will provide you with comprehensive instructions,
-    policies, and guidelines for the skill area.
-
-    Args:
-        skill_name: The name of the skill to load (e.g., "expense_reporting", "travel_booking")
+def load_skill(skill_name: str, config: Annotated[dict, InjectedState]) -> Command:
     """
-    # Find and return the requested skill
+    Load các bảng liên quan của một skill vào ngữ cảnh của agent.
+    Đây là bước BẮT BUỘC trước khi truy vấn schema hoặc thực thi SQL.
+    """
     for skill in SKILLS:
         if skill["name"] == skill_name:
-            return f"Loaded skill: {skill_name}\n\n{skill['content']}"
+            content = f"Skill '{skill_name}' đã được kích hoạt. Các bảng bạn có thể sử dụng: {', '.join(skill['relevant_tables'])}"
+            
+            return Command(
+                update={
+                    # Cập nhật danh sách skill đã load vào State
+                    "skills_loaded": [skill_name],
+                    # Phản hồi lại cho Agent thông qua tin nhắn Tool
+                    "messages": [ToolMessage(content=content, tool_call_id=config["tool_call_id"])]
+                }
+            )
 
-    # Skill not found
     available = ", ".join(s["name"] for s in SKILLS)
-    return f"Skill '{skill_name}' not found. Available skills: {available}"
+    return f"Skill '{skill_name}' không tồn tại. Các skill hiện có: {available}"
