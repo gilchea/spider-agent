@@ -67,11 +67,12 @@ def create_nl2sql_agent(db_id: str):
         agent = create_agent(
             model = gpt_model,
             # tools=create_db_tools(db_id),
+            tools = create_db_tools(db_id)+[load_skill],
             system_prompt=SYSTEM_PROMPT,
             checkpointer=InMemorySaver(),
             middleware = [
                 Middleware2(),
-                # Middleware1()
+                Middleware1()
             ]
         )
 

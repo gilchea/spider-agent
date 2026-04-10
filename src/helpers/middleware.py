@@ -123,5 +123,5 @@ class Middleware2(AgentMiddleware):
             {"type": "text", "text": skills_addendum}
         ]
         new_system_message = SystemMessage(content=new_content)
-        modified_request = request.override(system_message=new_system_message)
+        modified_request = request.override(system_message=new_system_message, tools=[load_skill])
         return handler(modified_request)
