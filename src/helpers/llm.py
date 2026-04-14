@@ -1,3 +1,11 @@
+"""
+LLM module for NL2SQL system.
+
+This module is responsible for:
+Initializing LLM models
+
+"""
+
 import httpx
 import os
 from langchain_groq import ChatGroq

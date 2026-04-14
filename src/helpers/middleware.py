@@ -9,7 +9,7 @@ from typing import TypedDict
 from src.helpers.llm import LLMFactory
 from src.helpers.SYSTEM_PROMPT import GUARDRAIL_PROMPT
 from src.helpers.skills import SKILLS
-from src.helpers.tools import load_skill
+from src.helpers.tools import load_skill, create_db_tools, CustomState
 from pydantic import BaseModel, Field
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.output_parsers.openai_tools import PydanticToolsParser
@@ -24,7 +24,9 @@ class GuardrailOutput(BaseModel):
     reason: str = Field(description="Reason for the decision")
 
 class Middleware1(AgentMiddleware):
-    """Middleware bảo mật SQL: Sử dụng LLM để đánh giá ý định người dùng trước khi Agent xử lý và callback llm"""
+    """Middleware bảo mật SQL: Sử dụng LLM để đánh giá ý định người dùng trước khi Agent xử lý và callback llm
+    Middleware callback llm: tạo cơ chế thay thế llm khi một llm bị lỗi 
+    """
 
     def __init__(self):
         super().__init__()
@@ -62,6 +64,7 @@ class Middleware1(AgentMiddleware):
                     }
 
             return None
+
         except Exception as e:
             # Fallback nếu LLM lỗi hoặc không parse được JSON
             print(f"Guardrail Error: {e}")
@@ -90,11 +93,12 @@ class Middleware1(AgentMiddleware):
                     continue
 
 class Middleware2(AgentMiddleware):
-
-    tool = [load_skill]
+    """Middleware that injects skill descriptions into the system prompt."""
 
     def __init__(self):
         super().__init__()
+        self.state_schema = CustomState 
+        self.tools = [load_skill]
 
         """Initialize and generate the skills prompt from SKILLS."""
         # Build skills prompt from the SKILLS list
@@ -123,5 +127,5 @@ class Middleware2(AgentMiddleware):
             {"type": "text", "text": skills_addendum}
         ]
         new_system_message = SystemMessage(content=new_content)
-        modified_request = request.override(system_message=new_system_message, tools=[load_skill])
+        modified_request = request.override(system_message=new_system_message)
         return handler(modified_request)
