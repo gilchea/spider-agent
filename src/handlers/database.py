@@ -6,7 +6,6 @@ This module provides a DatabaseManager class responsible for:
 - Managing connections to SQLite databases
 - Executing SQL queries safely using SQLAlchemy
 - Retrieving database metadata such as table names and schemas
-- Validating SQL queries using EXPLAIN QUERY PLAN
 
 The module includes structured logging and error handling
 to support debugging and production monitoring.
@@ -91,6 +90,25 @@ class DatabaseManager:
             Exception: Internally caught and logged, not raised to caller
         """
         try:
+            sql = sql.strip().strip("`").replace("sql\n", "")
+
+            # Only allow SELECT or WITH
+            if not sql.lower().startswith(("select", "with")):
+                logger.warning("Invalid SQL type detected")
+                return {
+                    "status": "invalid",
+                    "message": "Chỉ cho phép SELECT hoặc WITH query"
+                }
+
+            # Block dangerous keywords
+            forbidden_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER"]
+            if any(keyword in sql.upper() for keyword in forbidden_keywords):
+                logger.warning("Dangerous SQL keyword detected")
+                return {
+                    "status": "invalid",
+                    "message": "Query chứa từ khóa không hợp lệ"
+                }
+
             logger.info("Executing SQL query: %s", sql)
 
             with self.engine.connect() as conn:
@@ -196,62 +214,62 @@ class DatabaseManager:
             logger.error("Failed to fetch schemas: %s", str(e), exc_info=True)
             return ""
 
-    def check_sql_syntax(self, sql: str) -> Dict[str, str]:
-        """
-        Validate SQL query syntax using EXPLAIN QUERY PLAN.
+    # def check_sql_syntax(self, sql: str) -> Dict[str, str]:
+    #     """
+    #     Validate SQL query syntax using EXPLAIN QUERY PLAN.
 
-        This method ensures that the SQL query is:
-        - Read-only (SELECT or WITH)
-        - Free from dangerous operations (DROP, DELETE, etc.)
-        - Compatible with the database schema
+    #     This method ensures that the SQL query is:
+    #     - Read-only (SELECT or WITH)
+    #     - Free from dangerous operations (DROP, DELETE, etc.)
+    #     - Compatible with the database schema
 
-        The query is NOT executed.
+    #     The query is NOT executed.
 
-        Args:
-            sql (str): SQL query string to validate
+    #     Args:
+    #         sql (str): SQL query string to validate
 
-        Returns:
-            Dict[str, str]:
-                {
-                    "status": "valid" | "invalid",
-                    "message": Optional[str]
-                }
+    #     Returns:
+    #         Dict[str, str]:
+    #             {
+    #                 "status": "valid" | "invalid",
+    #                 "message": Optional[str]
+    #             }
 
-        Raises:
-            Exception: Internally handled and logged
-        """
-        try:
-            logger.info("Validating SQL syntax")
+    #     Raises:
+    #         Exception: Internally handled and logged
+    #     """
+    #     try:
+    #         logger.info("Validating SQL syntax")
 
-            clean_sql = sql.strip().strip("`").replace("sql\n", "")
+    #         clean_sql = sql.strip().strip("`").replace("sql\n", "")
 
-            # Only allow SELECT or WITH
-            if not clean_sql.lower().startswith(("select", "with")):
-                logger.warning("Invalid SQL type detected")
-                return {
-                    "status": "invalid",
-                    "message": "Chỉ cho phép SELECT hoặc WITH query"
-                }
+    #         # Only allow SELECT or WITH
+    #         if not clean_sql.lower().startswith(("select", "with")):
+    #             logger.warning("Invalid SQL type detected")
+    #             return {
+    #                 "status": "invalid",
+    #                 "message": "Chỉ cho phép SELECT hoặc WITH query"
+    #             }
 
-            # Block dangerous keywords
-            forbidden_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER"]
-            if any(keyword in clean_sql.upper() for keyword in forbidden_keywords):
-                logger.warning("Dangerous SQL keyword detected")
-                return {
-                    "status": "invalid",
-                    "message": "Query chứa từ khóa không hợp lệ"
-                }
+    #         # Block dangerous keywords
+    #         forbidden_keywords = ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER"]
+    #         if any(keyword in clean_sql.upper() for keyword in forbidden_keywords):
+    #             logger.warning("Dangerous SQL keyword detected")
+    #             return {
+    #                 "status": "invalid",
+    #                 "message": "Query chứa từ khóa không hợp lệ"
+    #             }
 
-            with self.engine.connect() as conn:
-                stmt = text("EXPLAIN QUERY PLAN " + clean_sql)
-                conn.execute(stmt)
+    #         with self.engine.connect() as conn:
+    #             stmt = text("EXPLAIN QUERY PLAN " + clean_sql)
+    #             conn.execute(stmt)
 
-            logger.info("SQL syntax is valid")
-            return {"status": "valid"}
+    #         logger.info("SQL syntax is valid")
+    #         return {"status": "valid"}
 
-        except Exception as e:
-            logger.error("SQL syntax validation failed: %s", str(e), exc_info=True)
-            return {
-                "status": "invalid",
-                "message": str(e)
-            }
+    #     except Exception as e:
+    #         logger.error("SQL syntax validation failed: %s", str(e), exc_info=True)
+    #         return {
+    #             "status": "invalid",
+    #             "message": str(e)
+    #         }
