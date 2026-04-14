@@ -4,28 +4,27 @@ Agent module for NL2SQL system.
 
 This module is responsible for:
 - Initializing LLM models
-- Configuring SSL for secure API communication
 - Creating NL2SQL agents with tool integrations
 - Providing utility functions for dataset filtering
 
 The agent leverages LangChain's tool-calling capabilities to
 convert natural language queries into SQL queries and execute them.
 """
-import os
-import httpx
-from typing import Any, Callable, Dict, List, Optional, Union
+# import os
+# import httpx
+# from typing import Any, Callable, Dict, List, Optional, Union
 
-from langchain_groq import ChatGroq
+# from langchain_groq import ChatGroq
 from langchain.agents import create_agent
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 
-from langchain.agents.middleware import AgentMiddleware, AgentState, hook_config, wrap_model_call, ModelRequest, ModelResponse
+# from langchain.agents.middleware import AgentMiddleware, AgentState, hook_config, wrap_model_call, ModelRequest, ModelResponse
 from src.helpers.tools import load_skill
-from langchain.agents.middleware import hook_config
+# from langchain.agents.middleware import hook_config
 
-from src.config import Config
+# from src.config import Config
 from src.helpers.tools import create_db_tools
 from src.helpers.middleware import Middleware1, Middleware2
 from src.handlers.logging_config import logger
