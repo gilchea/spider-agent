@@ -27,7 +27,8 @@ from src.helpers.skills import SKILLS
 from src.handlers.database import DatabaseManager
 from src.config import Config
 from src.handlers.logging_config import logger
-from langgraph.prebuilt import InjectedState
+# from langgraph.prebuilt import InjectedState
+# from src.helpers.state import CustomState
 
 
 # ================================
@@ -40,9 +41,13 @@ class TableNamesInput(BaseModel):
 
     Attributes:
         table_names (List[str]): List of table names to retrieve schema for
+        vertical (str): Vertical of the database
     """
     table_names: List[str] = Field(
         description="List of table names, e.g. ['users', 'orders']"
+    )
+    vertical: str = Field(
+        description="Vertical of the database, e.g. 'school_scheduling'"
     )
 
 
@@ -52,9 +57,13 @@ class SQLQueryInput(BaseModel):
 
     Attributes:
         sql_query (str): A complete SQL SELECT query
+        vertical (str): Vertical of the database
     """
     sql_query: str = Field(
         description="A complete and valid SQLite SELECT query"
+    )
+    vertical: str = Field(
+        description="Vertical of the database, e.g. 'school_scheduling'"
     )
 
 class ExternalKnowledgeInput(BaseModel):
@@ -115,12 +124,14 @@ def create_db_tools(db_id: str):
             return f"Lỗi khi lấy danh sách bảng: {str(e)}"
 
     @tool(args_schema=TableNamesInput)
-    def get_schemas(table_names: List[str], state: Annotated[dict, InjectedState]) -> str:
+    def get_schemas(table_names: List[str], vertical: str, runtime: ToolRuntime) -> str:
         """
         Retrieve CREATE TABLE schema definitions for specific tables.
 
         Args:
             table_names (List[str]): List of table names
+            vertical (str): "hr_student_admin" | "academic_scheduling" (skill vertical for context đã được load)
+            runtime (ToolRuntime): Runtime of the tool
 
         Returns:
             str: CREATE TABLE statements or error message
@@ -128,8 +139,15 @@ def create_db_tools(db_id: str):
         Raises:
             Exception: Internally handled and logged
         """
-        if not state.get("skills_loaded"):
-            return "LỖI: Bạn chưa load bất kỳ Skill nào. Hãy dùng 'load_skill' để biết bạn được phép dùng bảng nào trước."
+        # Check if the required skill has been loaded
+        skills_loaded = runtime.state.get("skills_loaded", [])
+
+        if vertical not in skills_loaded:
+            return (
+                f"Error: You must load the '{vertical}' skill first "
+                f"to understand the schema of the database. "
+                f"Use load_skill('{vertical}') to load the schema."
+            )
 
         try:
             logger.info("Tool get_schemas called with tables: %s", table_names)
@@ -145,12 +163,14 @@ def create_db_tools(db_id: str):
             return f"Lỗi khi lấy schema: {str(e)}"
 
     @tool(args_schema=SQLQueryInput)
-    def execute_sql(sql_query: str, state: Annotated[dict, InjectedState]) -> str:
+    def execute_sql(sql_query: str, vertical: str, runtime: ToolRuntime) -> str:
         """
         Execute a validated SQL SELECT query on the database.
 
         Args:
             sql_query (str): SQL SELECT query
+            vertical (str): hr_student_admin or academic_scheduling (skill vertical for context đã được load)
+            runtime (ToolRuntime): Runtime of the tool
 
         Returns:
             str: Query result in string format or error message
@@ -158,8 +178,15 @@ def create_db_tools(db_id: str):
         Raises:
             Exception: Internally handled and logged
         """
-        if not state.get("skills_loaded"):
-            return "LỖI: Truy cập bị từ chối. Bạn phải load Skill tương ứng trước khi thực thi SQL."
+        # Check if the required skill has been loaded
+        skills_loaded = runtime.state.get("skills_loaded", [])
+
+        if vertical not in skills_loaded:
+            return (
+                f"Error: You must load the '{vertical}' skill first "
+                f"to understand the database schema before writing queries and executing them. "
+                f"Use load_skill('{vertical}') to load the schema."
+            )
 
         try:
             logger.info("Tool execute_sql called")
@@ -178,107 +205,59 @@ def create_db_tools(db_id: str):
             logger.error("execute_sql failed: %s", str(e), exc_info=True)
             return f"Lỗi thực thi SQL: {str(e)}"
 
-    @tool(args_schema=ExternalKnowledgeInput)
-    def get_external_knowledge(db_id: str) -> str:
-        """
-        Retrieve external knowledge documents associated with a database.
-
-        Args:
-            db_id (str): Database identifier
-
-        Returns:
-            str: Combined content of external knowledge documents
-
-        Raises:
-            Exception: Internally handled and logged
-        """
-        try:
-            logger.info("Tool get_external_knowledge called for db_id: %s", db_id)
-
-            mapping_path = Config.DB_KNOWLEDGE_MAPPING
-
-            with open(mapping_path, "r", encoding="utf-8") as f:
-                mapping = json.load(f)
-
-            # Create a mapping of db_id to its external knowledge documents
-            db_map = {
-                item["db"]: item["external_knowledge"]
-                for item in mapping
-            }
-
-            if db_id not in db_map:
-                logger.info("No external knowledge found for db_id: %s", db_id)
-                return f"Không có kiến thức bổ sung (External Knowledge) cho database '{db_id}'."
-
-            contents = []
-
-            # for doc_name in db_map[db_id]:
-            doc_name = db_map[db_id]  # giả sử chỉ 1 doc cho mỗi db
-            path = os.path.join(Config.DOC_ROOT, doc_name)
-
-            if not os.path.exists(path):
-                logger.warning("Missing document: %s", doc_name)
-                contents.append(f"[Cảnh báo] Không tìm thấy tài liệu: {doc_name}")
-                # continue
-
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-
-                    if content:
-                        contents.append(f"\n===== {doc_name} =====\n{content}")
-                    else:
-                        contents.append(f"[Cảnh báo] Tài liệu '{doc_name}' rỗng.")
-
-            except Exception as inner_e:
-                logger.error("Failed reading document %s: %s", doc_name, str(inner_e), exc_info=True)
-                contents.append(f"[Lỗi] Không đọc được '{doc_name}': {str(inner_e)}")
-
-            return "\n".join(contents) if contents else "Không có nội dung external knowledge hợp lệ."
-
-        except Exception as e:
-            logger.error("get_external_knowledge failed: %s", str(e), exc_info=True)
-            return f"Lỗi khi đọc file mapping db_knowledge.json: {str(e)}"
-        
-
     return [
         # list_tables,
         get_schemas,
         execute_sql,
         # check_syntax,
-        get_external_knowledge
     ]
-# from langchain.tools import tool
 
-from typing import Annotated, List, TypedDict
-from langgraph.graph.message import add_messages
-
-class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]
-    # Lưu trữ danh sách các skill đã được load
-    skills_loaded: List[str]
-
-from langgraph.types import Command
-from langchain_core.messages import ToolMessage
+from langgraph.types import Command  
+from langchain.tools import tool, ToolRuntime
+from langchain.messages import ToolMessage  
 
 @tool
-def load_skill(skill_name: str, config: Annotated[dict, InjectedState]) -> Command:
+def load_skill(skill_name: str, runtime: ToolRuntime) -> Command:
+    """Load the full content of a skill into the agent's context.
+
+    Use this when you need detailed information about how to handle a specific
+    type of request. This will provide you with comprehensive instructions,
+    policies, and guidelines for the skill area.
+
+    Args:
+        skill_name: The name of the skill to load
+        runtime (ToolRuntime): Runtime of the tool
+
+    Returns:
+        Command: Command to update the state
     """
-    Load các bảng liên quan của một skill vào ngữ cảnh của agent.
-    Đây là bước BẮT BUỘC trước khi truy vấn schema hoặc thực thi SQL.
-    """
+    # Find and return the requested skill
     for skill in SKILLS:
         if skill["name"] == skill_name:
-            content = f"Skill '{skill_name}' đã được kích hoạt. Các bảng bạn có thể sử dụng: {', '.join(skill['relevant_tables'])}"
-            
+            skill_content = f"Loaded skill: {skill_name}\n\n{skill['relevant_tables']}"
+
+            # Update state to track loaded skill
             return Command(
                 update={
-                    # Cập nhật danh sách skill đã load vào State
+                    "messages": [
+                        ToolMessage(
+                            content=skill_content,
+                            tool_call_id=runtime.tool_call_id,
+                        )
+                    ],
                     "skills_loaded": [skill_name],
-                    # Phản hồi lại cho Agent thông qua tin nhắn Tool
-                    "messages": [ToolMessage(content=content, tool_call_id=config["tool_call_id"])]
                 }
             )
 
+    # Skill not found
     available = ", ".join(s["name"] for s in SKILLS)
-    return f"Skill '{skill_name}' không tồn tại. Các skill hiện có: {available}"
+    return Command(
+        update={
+            "messages": [
+                ToolMessage(
+                    content=f"Skill '{skill_name}' not found. Available skills: {available}",
+                    tool_call_id=runtime.tool_call_id,
+                )
+            ]
+        }
+    )
