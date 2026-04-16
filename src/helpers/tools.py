@@ -21,14 +21,15 @@ import os
 from typing import List
 
 from pydantic import BaseModel, Field
-from langchain.tools import tool
+from langchain.tools import tool, ToolRuntime
+from langgraph.types import Command
+from langchain.messages import ToolMessage
 
 from src.helpers.skills import SKILLS
 from src.handlers.database import DatabaseManager
 from src.config import Config
 from src.handlers.logging_config import logger
-# from langgraph.prebuilt import InjectedState
-# from src.helpers.state import CustomState
+from src.helpers.state import CustomState
 
 
 # ================================
@@ -44,10 +45,10 @@ class TableNamesInput(BaseModel):
         vertical (str): Vertical of the database
     """
     table_names: List[str] = Field(
-        description="List of table names, e.g. ['users', 'orders']"
+        description="List of table names, e.g. ['Students', 'Departments', 'Majors']"
     )
     vertical: str = Field(
-        description="Vertical of the database, e.g. 'school_scheduling'"
+        description="Vertical of the database"
     )
 
 
@@ -63,7 +64,7 @@ class SQLQueryInput(BaseModel):
         description="A complete and valid SQLite SELECT query"
     )
     vertical: str = Field(
-        description="Vertical of the database, e.g. 'school_scheduling'"
+        description="Vertical of the database"
     )
 
 class ExternalKnowledgeInput(BaseModel):
@@ -212,9 +213,7 @@ def create_db_tools(db_id: str):
         # check_syntax,
     ]
 
-from langgraph.types import Command  
-from langchain.tools import tool, ToolRuntime
-from langchain.messages import ToolMessage  
+
 
 @tool
 def load_skill(skill_name: str, runtime: ToolRuntime) -> Command:

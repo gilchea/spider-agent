@@ -70,8 +70,8 @@ def create_nl2sql_agent(db_id: str):
             system_prompt=SYSTEM_PROMPT,
             checkpointer=InMemorySaver(),
             middleware = [
+                Middleware1(),
                 Middleware2(),
-                Middleware1()
             ]
         )
 

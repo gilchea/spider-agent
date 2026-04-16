@@ -188,105 +188,113 @@ def main() -> None:
 
         # Page config
         st.set_page_config(
-            page_title="NL2SQL Agent",
-            layout="wide"
+            page_title="NL2SQL Chatbot",
+            layout="centered",
+            page_icon="💬"
         )
-
-        # Header
-        st.title("💬 NL → SQL Agent")
-        st.caption("Streamlit UI for NL2SQL API system")
 
         # Sidebar
         with st.sidebar:
-            st.header("⚙️ Cấu hình")
-
+            st.title("⚙️ Configuration")
+            
             db_id = st.text_input(
                 "Database ID",
-                placeholder="vd: E_commerce"
+                value=st.session_state.db_id if st.session_state.db_id else "",
+                placeholder="e.g., school_scheduling"
             )
 
-            if st.button("Load Database"):
+            if st.button("Load Database", use_container_width=True):
                 if db_id:
-                    result = load_database(db_id)
-
-                    if result.get("success"):
-                        st.session_state.db_id = db_id
-                        st.success(f"Loaded DB: {db_id}")
-                        st.write("Tables:", result.get("tables", []))
-                    else:
-                        st.error(result.get("error"))
+                    with st.spinner("Loading database..."):
+                        result = load_database(db_id)
+                        if result.get("success"):
+                            st.session_state.db_id = db_id
+                            st.success(f"Successfully loaded: {db_id}")
+                            # Optional: Clear history when switching DB
+                            # st.session_state.history = []
+                        else:
+                            st.error(f"Error: {result.get('error')}")
                 else:
-                    st.warning("Nhập db_id")
+                    st.warning("Please enter a Database ID")
 
             st.divider()
-
-            if st.button("Clear History"):
+            
+            if st.button("Clear Chat", use_container_width=True):
                 st.session_state.history = []
-                st.session_state.session_id = str(uuid.uuid4())  # 👈 reset memory
-                st.success("Đã clear (UI + Memory)")
+                st.session_state.session_id = str(uuid.uuid4())
+                st.rerun()
 
-        # Main
+            if st.session_state.db_id:
+                st.info(f"Currently connected to: **{st.session_state.db_id}**")
+
+        # Chat Interface
+        st.title("💬 NL2SQL Chatbot")
+        st.markdown("Ask questions about your database in natural language.")
+
         if st.session_state.db_id is None:
-            st.info("👉 Nhập db_id và load database trước")
+            st.warning("👈 Please load a database in the sidebar to start chatting.")
             return
 
-        question = st.text_area(
-            "Nhập câu hỏi:",
-            placeholder="VD: Top 5 khách hàng mua nhiều nhất?",
-            height=100
-        )
-
-        if st.button("🚀 Run", type="primary"):
-            if not question.strip():
-                st.warning("Nhập câu hỏi trước")
-            else:
-                result = run_query(question)
-
-                st.session_state.history.append({
-                    "question": question,
-                    "result": result
-                })
-
-                st.divider()
-                st.subheader("📌 Kết quả")
-
-                if result["success"]:
-                    st.success("Thành công")
-
-                    st.caption(f"⏱️ Thời gian chạy: {result.get('execution_time')} giây")
-
-                    st.markdown("### 💬 Trả lời")
-
-                    st.write(result.get("answer")) # text trả lời
-
-                    df = None
-
-                    if result.get("data") and result.get("columns"):
-                        df = pd.DataFrame(
-                            result["data"],
-                            columns=result["columns"]
-                        )
-                        st.dataframe(df)
-
-                    with st.expander("🧠 Agent Trace (debug)"): 
-                        st.json(result["raw"])
-
+        # Display Chat History
+        for chat in st.session_state.history:
+            # User message
+            with st.chat_message("user"):
+                st.markdown(chat["question"])
+            
+            # Assistant response
+            with st.chat_message("assistant"):
+                res = chat["result"]
+                if res["success"]:
+                    st.markdown(res["answer"])
+                    
+                    if res.get("data") and res.get("columns"):
+                        df = pd.DataFrame(res["data"], columns=res["columns"])
+                        st.dataframe(df, hide_index=True)
+                    
+                    if res.get("execution_time"):
+                        st.caption(f"⏱️ Execution time: {res['execution_time']}s")
+                    
+                    with st.expander("🔍 Trace & Debug"):
+                        st.json(res["raw"])
                 else:
-                    st.error(result.get("answer"))
+                    st.error(res.get("answer", "Unknown error occurred"))
 
-        # History
-        if st.session_state.history:
-            st.divider()
-            st.subheader("📜 Lịch sử")
+        # Chat Input
+        if prompt := st.chat_input("Ask a question about your data..."):
+            # Display user message immediately
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-            for i, item in enumerate(reversed(st.session_state.history), 1):
-                with st.expander(f"Query {i}: {item['question'][:50]}"):
-                    st.write("**Question:**", item["question"])
-                    st.write("**Answer:**", item["result"].get("answer"))
+            # Call API
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    result = run_query(prompt)
+                    
+                    if result["success"]:
+                        st.markdown(result["answer"])
+                        if result.get("data") and result.get("columns"):
+                            df = pd.DataFrame(result["data"], columns=result["columns"])
+                            st.dataframe(df, hide_index=True)
+                        
+                        if result.get("execution_time"):
+                            st.caption(f"⏱️ Execution time: {result['execution_time']}s")
+                        
+                        with st.expander("🔍 Trace & Debug"):
+                            st.json(result["raw"])
+                    else:
+                        st.error(result.get("answer", "Error executing query"))
+
+            # Append to history
+            st.session_state.history.append({
+                "question": prompt,
+                "result": result
+            })
+            
+            # st.rerun() # Not strictly necessary with chat_input usually, but keeps state synced
 
     except Exception as e:
         logger.error("Streamlit app failed", exc_info=True)
-        raise RuntimeError(f"Streamlit app error: {str(e)}") from e
+        st.error(f"An unexpected error occurred: {str(e)}")
 
 # -------------------------------------------------------------------
 # ENTRY POINT

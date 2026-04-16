@@ -64,22 +64,15 @@ class QueryRequest(BaseModel):
     question: str
     session_id: str 
 
-
 # -------------------------------------------------------------------
 # IN-MEMORY AGENT STORE
 # -------------------------------------------------------------------
 
 agents: Dict[str, Any] = {}
 
-
 # -------------------------------------------------------------------
 # API ENDPOINTS
 # -------------------------------------------------------------------
-# @app.post("/reset_memory")
-# def reset_memory(req: LoadDBRequest):
-#     if req.db_id in agents:
-#         agents[req.db_id] = create_nl2sql_agent(req.db_id)
-#     return {"success": True}
 
 @app.post("/load_db")
 def load_database(req: LoadDBRequest) -> Dict[str, Any]:
@@ -167,9 +160,6 @@ def run_query(req: QueryRequest) -> Dict[str, Any]:
 
         agent = agents[req.db_id]
 
-        # input_content = f"Database: {req.db_id}\n"
-        # input_content += f"Question: {req.question}"
-
         # thread_id = f"session_{req.db_id}"  # đơn giản cho 1 user
         thread_id = f"{req.session_id}_{req.db_id}" #
 
@@ -210,7 +200,6 @@ def run_query(req: QueryRequest) -> Dict[str, Any]:
         except Exception:
             pass
         
-        # clean_answer = extract_text(output)
         return {
             "success": True,
             "answer": output_text,  # text trả lời
