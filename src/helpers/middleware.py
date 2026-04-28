@@ -40,7 +40,7 @@ class Middleware1(AgentMiddleware):
         self.gemini_model = llm_factory.get_gemini_model()     
 
     @hook_config(can_jump_to=["end"])
-    def guardrail(self, state: AgentState, runtime: Runtime):
+    def before_agent(self, state: AgentState, runtime: Runtime):
         """Kiểm tra tin nhắn của người dùng trước khi Agent bắt đầu suy nghĩ."""
         if not state["messages"]:
             return None
@@ -71,7 +71,7 @@ class Middleware1(AgentMiddleware):
             return None 
     
     # @wrap_model_call
-    def fallback_model(self, request: ModelRequest, handler: Callable) -> ModelResponse:
+    def wrap_model_call(self, request: ModelRequest, handler: Callable) -> ModelResponse:
         gpt = self.gpt_model
         groq = self.groq_model
         gemini = self.gemini_model
@@ -81,7 +81,7 @@ class Middleware1(AgentMiddleware):
 
         # Thử model chính (Handler gốc)
         try:
-            return handler(request.override(model=groq))
+            return handler(request.override(model=gpt))
         except Exception as e1:
             logger.warning(f"Primary model failed: {e1}. Switching to fallbacks...")
 
@@ -110,7 +110,7 @@ class Middleware2(AgentMiddleware):
             )
         self.skills_prompt = "\n".join(skills_list)  
                     
-    def inject_skill(self,
+    def wrap_model_call(self,
         request: ModelRequest,
         handler: Callable[[ModelRequest], ModelResponse],
     ) -> ModelResponse:
